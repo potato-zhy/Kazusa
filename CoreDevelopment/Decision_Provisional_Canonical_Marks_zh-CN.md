@@ -44,9 +44,14 @@
 
 1. mark 本身不会直接改写 canonical state。
 2. mark 必须跨 ordinary snapshot progression 持续保留。
-3. mark 只能通过显式的 integration review 被清理。
-4. review 一个 mark 时，必须引用它来源的 evidence event。
-5. mark review 与 canonical revision 有关联，但不是同一件事。
+3. 显式 review 必须落到三种处置结果之一：
+   `carry_forward`、`dismiss` 或 `canonicalize`。
+4. `carry_forward` 表示该 mark 保留，等待后续复核。
+5. `dismiss` 表示解除这项复核义务，但不进入 canonical。
+6. `canonicalize` 表示解除该 mark，并把来源事件纳入
+   canonical autobiographical state。
+7. review 一个 mark 时，必须引用它来源的 evidence event。
+8. mark review 与 canonical revision 有关联，但不是同一件事。
 
 ## 为什么这样选
 
@@ -61,6 +66,7 @@
 
 - 在 event ingestion 时创建 mark，
 - 将 mark 持久化到 JSON snapshot，
-- 在 integration 阶段显式 review mark。
+- 在 integration 阶段显式 review mark，并区分
+  `carry_forward`、`dismiss` 与 `canonicalize`。
 
 阈值细化与更丰富的 mark 生命周期，留到后续阶段继续推进。

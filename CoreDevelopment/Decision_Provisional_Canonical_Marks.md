@@ -44,9 +44,14 @@ The Phase 1 prototype creates these marks for:
 
 1. A mark does not itself rewrite canonical state.
 2. A mark must persist across ordinary snapshot progression.
-3. A mark may be cleared only by explicit integration review.
-4. Reviewing a mark must cite the originating evidence event.
-5. Mark review and canonical revision are related but not identical actions.
+3. Explicit review must end in one of three dispositions:
+   `carry_forward`, `dismiss`, or `canonicalize`.
+4. `carry_forward` keeps the mark open for later review.
+5. `dismiss` clears the review obligation without canonical admission.
+6. `canonicalize` clears the mark and admits the originating event into
+   canonical autobiographical state.
+7. Reviewing a mark must cite the originating evidence event.
+8. Mark review and canonical revision are related but not identical actions.
 
 ## Why This Choice
 
@@ -61,6 +66,7 @@ The prototype now supports:
 
 - mark creation during event ingestion,
 - JSON persistence of marks,
-- and explicit mark review during integration.
+- and explicit mark review during integration with
+  `carry_forward`, `dismiss`, and `canonicalize` outcomes.
 
 Threshold tuning and richer mark lifecycles remain open for later phases.

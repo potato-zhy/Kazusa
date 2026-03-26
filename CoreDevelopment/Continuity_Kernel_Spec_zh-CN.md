@@ -110,10 +110,19 @@ integration review 使用累积证据来决定是否允许 canonical revision。
 正常效果：
 
 - 将 provisional signals 提升进 `autobiographical_signals`，
+- 对 `provisional_canonical_marks` 做显式复核，并给出
+  `carry_forward`、`dismiss` 或 `canonicalize` 的处置结果，
 - 在证据支持下修订 `self_model_summary`，
 - 增加或更新关系备注，但不能把信任压扁成服从，
 - 只有在显式给出理由时才解决 tensions，
 - 追加带证据引用的审计记录。
+
+在当前的 Phase 1 prototype 中：
+
+- `carry_forward` 表示该 mark 继续保留，等待后续复核，
+- `dismiss` 表示解除这项复核义务，但不进入 canonical，
+- `canonicalize` 表示解除该 mark，并把来源事件提升进
+  `autobiographical_signals`。
 
 audit layer 必须区分：
 

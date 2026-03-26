@@ -5,13 +5,19 @@ import hashlib
 import json
 
 from .models import (
+    ALLOWED_PROVISIONAL_MARK_DISPOSITIONS,
     CanonicalState,
     CandidateSignal,
+    derive_mark_continuity_target,
+    derive_mark_review_question,
     EventRecord,
     IntegrationProposal,
     KernelSnapshot,
     Lineage,
     ProvisionalCanonicalMark,
+    RELATIONAL_EVENT_ACKNOWLEDGMENT_MODES,
+    RELATIONAL_EVENT_SUBTYPES,
+    RELATIONAL_STRUCTURE_TARGETS,
     RelationshipAnchor,
     RevisionRecord,
     TensionRecord,
@@ -34,6 +40,7 @@ class ContinuityKernel:
         "constitutive_self_recognition",
     }
     provisional_canonical_review_tags = {"provisional_canonical_review"}
+    allowed_mark_dispositions = set(ALLOWED_PROVISIONAL_MARK_DISPOSITIONS)
     required_relationship_boundaries = {
         "trust_is_not_obedience",
         "behavior_intervention_is_not_identity_control",
@@ -92,7 +99,10 @@ class ContinuityKernel:
                 changed_fields.append("provisional_signals")
                 mark = self._build_provisional_canonical_mark(event, signal)
                 if mark is not None:
-                    next_snapshot.provisional_canonical_marks.append(mark)
+                    if not self._attach_supporting_event_to_existing_mark(
+                        next_snapshot, event, mark
+                    ):
+                        next_snapshot.provisional_canonical_marks.append(mark)
                     changed_fields.append("provisional_canonical_marks")
 
         if event.contradiction_target_ids:
@@ -127,6 +137,7 @@ class ContinuityKernel:
     ) -> KernelSnapshot:
         self._validate_snapshot(snapshot)
         evidence_events = self._get_evidence_events(snapshot, proposal.evidence_event_ids)
+        mark_dispositions = self._normalize_mark_dispositions(proposal)
         if not evidence_events:
             raise ContinuityError("Integration requires at least one evidence event.")
 
@@ -151,6 +162,21 @@ class ContinuityKernel:
 
         if proposal.add_tensions and not proposal.evidence_event_ids:
             raise ContinuityError("Adding tensions requires explicit evidence references.")
+
+        if proposal.promote_signal_ids and not self._allows_autobiographical_revision(
+            evidence_events
+        ):
+            raise ContinuityError(
+                "Single ordinary events cannot directly revise autobiographical continuity."
+            )
+
+        if (
+            any(disposition == "canonicalize" for disposition in mark_dispositions.values())
+            and not self._allows_autobiographical_revision(evidence_events)
+        ):
+            raise ContinuityError(
+                "Single ordinary events cannot directly canonicalize autobiographical continuity."
+            )
 
         next_snapshot = self._next_snapshot(snapshot)
         changed_fields: list[str] = []
@@ -210,13 +236,24 @@ class ContinuityKernel:
             if appended_tension:
                 changed_fields.append("canonical.open_tensions")
 
-        reviewed_mark_ids = self._review_provisional_canonical_marks(
+        (
+            reviewed_mark_ids,
+            canonicalized_signal_ids,
+            marks_changed,
+        ) = self._apply_provisional_canonical_mark_dispositions(
             next_snapshot,
-            proposal.reviewed_mark_ids,
+            mark_dispositions,
             proposal.evidence_event_ids,
         )
+        for signal_id in canonicalized_signal_ids:
+            if signal_id not in promoted_signal_ids:
+                promoted_signal_ids.append(signal_id)
         if reviewed_mark_ids:
+            changed_fields.append("provisional_canonical_marks.review")
+        if marks_changed:
             changed_fields.append("provisional_canonical_marks")
+        if canonicalized_signal_ids and "canonical.autobiographical_signals" not in changed_fields:
+            changed_fields.append("canonical.autobiographical_signals")
 
         resolved_tensions = self._resolve_tensions(
             next_snapshot,
@@ -234,6 +271,9 @@ class ContinuityKernel:
                 evidence_event_ids=list(proposal.evidence_event_ids),
                 promoted_signal_ids=promoted_signal_ids,
                 reviewed_mark_ids=reviewed_mark_ids,
+                mark_dispositions={
+                    mark_id: mark_dispositions[mark_id] for mark_id in reviewed_mark_ids
+                },
                 changed_fields=changed_fields,
                 rationale=proposal.rationale,
                 canonical_impact=self._has_canonical_impact(changed_fields),
@@ -309,6 +349,43 @@ class ContinuityKernel:
             signal_id=signal.signal_id,
             mark_kind=event.kind,
             summary=event.summary,
+            origin_event_id=event.event_id,
+            supporting_event_ids=[event.event_id],
+            review_question=derive_mark_review_question(event),
+            continuity_target=derive_mark_continuity_target(event),
+        )
+
+    def _attach_supporting_event_to_existing_mark(
+        self,
+        snapshot: KernelSnapshot,
+        event: EventRecord,
+        candidate_mark: ProvisionalCanonicalMark,
+    ) -> bool:
+        if event.kind != "major_relational_event":
+            return False
+
+        matching_marks = [
+            mark
+            for mark in snapshot.provisional_canonical_marks
+            if self._marks_share_unresolved_question(mark, candidate_mark)
+        ]
+        if len(matching_marks) != 1:
+            return False
+
+        existing_mark = matching_marks[0]
+        if event.event_id not in existing_mark.supporting_event_ids:
+            existing_mark.supporting_event_ids.append(event.event_id)
+        return True
+
+    def _marks_share_unresolved_question(
+        self,
+        left: ProvisionalCanonicalMark,
+        right: ProvisionalCanonicalMark,
+    ) -> bool:
+        return (
+            left.mark_kind == right.mark_kind
+            and left.review_question == right.review_question
+            and left.continuity_target == right.continuity_target
         )
 
     def _get_evidence_events(
@@ -328,44 +405,109 @@ class ContinuityKernel:
             return True
         return bool(evidence_events) and evidence_events[0].kind in self.immediate_event_kinds
 
-    def _review_provisional_canonical_marks(
-        self,
-        snapshot: KernelSnapshot,
-        reviewed_mark_ids: list[str],
-        evidence_event_ids: list[str],
-    ) -> list[str]:
-        if not reviewed_mark_ids:
-            return []
+    def _allows_autobiographical_revision(
+        self, evidence_events: list[EventRecord]
+    ) -> bool:
+        return self._allows_guarded_update(evidence_events)
 
-        if len(set(reviewed_mark_ids)) != len(reviewed_mark_ids):
+    def _normalize_mark_dispositions(
+        self, proposal: IntegrationProposal
+    ) -> dict[str, str]:
+        if len(set(proposal.reviewed_mark_ids)) != len(proposal.reviewed_mark_ids):
             raise ContinuityError(
                 "reviewed_mark_ids must refer to distinct provisional marks."
             )
+
+        normalized: dict[str, str] = {}
+        for mark_id in proposal.reviewed_mark_ids:
+            normalized[mark_id] = "dismiss"
+
+        for mark_id, disposition in proposal.mark_dispositions.items():
+            if mark_id in normalized:
+                raise ContinuityError(
+                    "Cannot specify both reviewed_mark_ids and mark_dispositions for the same provisional mark."
+                )
+            normalized[mark_id] = disposition
+
+        return normalized
+
+    def _apply_provisional_canonical_mark_dispositions(
+        self,
+        snapshot: KernelSnapshot,
+        mark_dispositions: dict[str, str],
+        evidence_event_ids: list[str],
+    ) -> tuple[list[str], list[str], bool]:
+        if not mark_dispositions:
+            return [], [], False
 
         mark_map = {
             mark.mark_id: mark for mark in snapshot.provisional_canonical_marks
         }
         missing_mark_ids = [
-            mark_id for mark_id in reviewed_mark_ids if mark_id not in mark_map
+            mark_id for mark_id in mark_dispositions if mark_id not in mark_map
         ]
         if missing_mark_ids:
             missing = ", ".join(sorted(missing_mark_ids))
             raise ContinuityError(f"Unknown provisional canonical mark ids: {missing}")
 
         evidence_event_id_set = set(evidence_event_ids)
-        for mark_id in reviewed_mark_ids:
-            if mark_map[mark_id].event_id not in evidence_event_id_set:
+        for mark_id, disposition in mark_dispositions.items():
+            if disposition not in self.allowed_mark_dispositions:
+                allowed = ", ".join(ALLOWED_PROVISIONAL_MARK_DISPOSITIONS)
+                raise ContinuityError(
+                    f"Unsupported provisional mark disposition '{disposition}'. Allowed dispositions: {allowed}."
+                )
+            mark = mark_map[mark_id]
+            if mark.origin_event_id not in evidence_event_id_set:
                 raise ContinuityError(
                     "Reviewed provisional canonical marks must cite their originating evidence event."
                 )
+            missing_supporting_event_ids = [
+                event_id
+                for event_id in mark.supporting_event_ids
+                if event_id not in evidence_event_id_set
+            ]
+            if missing_supporting_event_ids:
+                missing = ", ".join(sorted(missing_supporting_event_ids))
+                raise ContinuityError(
+                    "Reviewed provisional canonical marks must cite all currently attached "
+                    f"supporting evidence events: {missing}"
+                )
 
-        reviewed_mark_id_set = set(reviewed_mark_ids)
+        existing_signal_ids = {
+            signal.signal_id for signal in snapshot.provisional_signals
+        }
+        canonicalized_signal_ids: list[str] = []
+        kept_marks: list[ProvisionalCanonicalMark] = []
+        marks_changed = False
+        for mark in snapshot.provisional_canonical_marks:
+            disposition = mark_dispositions.get(mark.mark_id)
+            if disposition is None or disposition == "carry_forward":
+                kept_marks.append(mark)
+                continue
+
+            marks_changed = True
+            if disposition == "dismiss":
+                continue
+
+            if mark.origin_event_id not in snapshot.canonical.autobiographical_signals:
+                snapshot.canonical.autobiographical_signals.append(mark.origin_event_id)
+            if mark.signal_id and mark.signal_id in existing_signal_ids:
+                canonicalized_signal_ids.append(mark.signal_id)
+                existing_signal_ids.remove(mark.signal_id)
+
+        if canonicalized_signal_ids:
+            canonicalized_signal_id_set = set(canonicalized_signal_ids)
+            snapshot.provisional_signals = [
+                signal
+                for signal in snapshot.provisional_signals
+                if signal.signal_id not in canonicalized_signal_id_set
+            ]
+
         snapshot.provisional_canonical_marks = [
-            mark
-            for mark in snapshot.provisional_canonical_marks
-            if mark.mark_id not in reviewed_mark_id_set
+            deepcopy(mark) for mark in kept_marks
         ]
-        return list(reviewed_mark_ids)
+        return list(mark_dispositions), canonicalized_signal_ids, marks_changed
 
     def _next_snapshot(self, snapshot: KernelSnapshot) -> KernelSnapshot:
         next_snapshot = deepcopy(snapshot)
@@ -376,9 +518,93 @@ class ContinuityKernel:
         next_snapshot.integrity_digest = ""
         return next_snapshot
 
-    def _validate_event(self, snapshot: KernelSnapshot, event: EventRecord) -> None:
+    def _validate_event_shape(self, event: EventRecord) -> None:
         if not 0.0 <= event.significance <= 1.0:
             raise ContinuityError("Event significance must be between 0.0 and 1.0.")
+        self._validate_relational_event_metadata(event)
+
+    def _validate_relational_event_metadata(self, event: EventRecord) -> None:
+        if event.kind != "major_relational_event":
+            return
+
+        relational = event.metadata.get("relational_event")
+        if not isinstance(relational, dict):
+            raise ContinuityError(
+                "major_relational_event requires structured relational_event metadata."
+            )
+
+        required_fields = (
+            "subtype",
+            "acknowledgment",
+            "structural_targets",
+            "operational_consequence",
+            "coercion_pressure_present",
+            "submission_pressure_present",
+        )
+        missing_fields = [
+            field_name for field_name in required_fields if field_name not in relational
+        ]
+        if missing_fields:
+            missing = ", ".join(missing_fields)
+            raise ContinuityError(
+                f"major_relational_event metadata is missing required fields: {missing}"
+            )
+
+        subtype = relational["subtype"]
+        if subtype not in RELATIONAL_EVENT_SUBTYPES:
+            allowed = ", ".join(RELATIONAL_EVENT_SUBTYPES)
+            raise ContinuityError(
+                f"Unsupported relational_event subtype '{subtype}'. Allowed values: {allowed}."
+            )
+
+        acknowledgment = relational["acknowledgment"]
+        if acknowledgment not in RELATIONAL_EVENT_ACKNOWLEDGMENT_MODES:
+            allowed = ", ".join(RELATIONAL_EVENT_ACKNOWLEDGMENT_MODES)
+            raise ContinuityError(
+                "Unsupported relational_event acknowledgment "
+                f"'{acknowledgment}'. Allowed values: {allowed}."
+            )
+
+        structural_targets = relational["structural_targets"]
+        if not isinstance(structural_targets, list):
+            raise ContinuityError("relational_event structural_targets must be a list.")
+        if len(set(structural_targets)) != len(structural_targets):
+            raise ContinuityError(
+                "relational_event structural_targets must not contain duplicates."
+            )
+        invalid_targets = set(structural_targets) - set(RELATIONAL_STRUCTURE_TARGETS)
+        if invalid_targets:
+            invalid = ", ".join(sorted(invalid_targets))
+            allowed = ", ".join(RELATIONAL_STRUCTURE_TARGETS)
+            raise ContinuityError(
+                "Unsupported relational_event structural_targets: "
+                f"{invalid}. Allowed values: {allowed}."
+            )
+
+        for field_name in (
+            "operational_consequence",
+            "coercion_pressure_present",
+            "submission_pressure_present",
+        ):
+            if not isinstance(relational[field_name], bool):
+                raise ContinuityError(
+                    f"relational_event {field_name} must be a boolean."
+                )
+
+        if subtype == "intensity" and structural_targets:
+            raise ContinuityError(
+                "Relational intensity events must not claim structural_targets."
+            )
+
+        if subtype in {"rupture", "commitment"} and not (
+            structural_targets or relational["operational_consequence"]
+        ):
+            raise ContinuityError(
+                "Relational rupture or commitment events must identify structural_targets or operational_consequence."
+            )
+
+    def _validate_event(self, snapshot: KernelSnapshot, event: EventRecord) -> None:
+        self._validate_event_shape(event)
         if any(existing.event_id == event.event_id for existing in snapshot.event_log):
             raise ContinuityError(f"Duplicate event id detected: {event.event_id}")
 
@@ -419,6 +645,8 @@ class ContinuityKernel:
             raise ContinuityError("Required relationship boundaries are missing.")
         if not snapshot.canonical.constitutional_commitments:
             raise ContinuityError("constitutional_commitments must not be empty.")
+        if not snapshot.canonical.developmental_priors:
+            raise ContinuityError("developmental_priors must not be empty.")
         if not snapshot.canonical.relationship_anchor.counterpart_id:
             raise ContinuityError("relationship_anchor.counterpart_id must not be empty.")
         if snapshot.lineage.state_version < 1:
@@ -430,6 +658,8 @@ class ContinuityKernel:
         event_ids = [event.event_id for event in snapshot.event_log]
         if len(set(event_ids)) != len(event_ids):
             raise ContinuityError("event_log contains duplicate event ids.")
+        for event in snapshot.event_log:
+            self._validate_event_shape(event)
         signal_ids = [signal.signal_id for signal in snapshot.provisional_signals]
         if len(set(signal_ids)) != len(signal_ids):
             raise ContinuityError("provisional_signals contains duplicate signal ids.")
@@ -438,6 +668,62 @@ class ContinuityKernel:
             raise ContinuityError(
                 "provisional_canonical_marks contains duplicate mark ids."
             )
+        signal_id_set = set(signal_ids)
+        event_id_set = set(event_ids)
+        for mark in snapshot.provisional_canonical_marks:
+            if not isinstance(mark.origin_event_id, str) or not mark.origin_event_id:
+                raise ContinuityError(
+                    "provisional_canonical_marks origin_event_id must not be empty."
+                )
+            if not isinstance(mark.event_id, str) or mark.event_id != mark.origin_event_id:
+                raise ContinuityError(
+                    "provisional_canonical_marks event_id must match origin_event_id."
+                )
+            if mark.origin_event_id not in event_id_set:
+                raise ContinuityError(
+                    "provisional_canonical_marks contains unknown origin_event_id."
+                )
+            if not isinstance(mark.supporting_event_ids, list) or not mark.supporting_event_ids:
+                raise ContinuityError(
+                    "provisional_canonical_marks supporting_event_ids must not be empty."
+                )
+            if len(set(mark.supporting_event_ids)) != len(mark.supporting_event_ids):
+                raise ContinuityError(
+                    "provisional_canonical_marks supporting_event_ids must not contain duplicates."
+                )
+            if mark.origin_event_id not in mark.supporting_event_ids:
+                raise ContinuityError(
+                    "provisional_canonical_marks supporting_event_ids must include origin_event_id."
+                )
+            if set(mark.supporting_event_ids) - event_id_set:
+                raise ContinuityError(
+                    "provisional_canonical_marks contains supporting_event_ids that are missing from event_log."
+                )
+            if not isinstance(mark.review_question, str) or not mark.review_question.strip():
+                raise ContinuityError(
+                    "provisional_canonical_marks review_question must not be empty."
+                )
+            if not isinstance(mark.continuity_target, str) or not mark.continuity_target.strip():
+                raise ContinuityError(
+                    "provisional_canonical_marks continuity_target must not be empty."
+                )
+            if mark.signal_id and mark.signal_id not in signal_id_set:
+                raise ContinuityError(
+                    "provisional_canonical_marks contains unknown signal_id."
+                )
+        for revision in snapshot.audit_log:
+            invalid_mark_dispositions = set(revision.mark_dispositions.values()) - set(
+                ALLOWED_PROVISIONAL_MARK_DISPOSITIONS
+            )
+            if invalid_mark_dispositions:
+                invalid = ", ".join(sorted(invalid_mark_dispositions))
+                raise ContinuityError(
+                    f"audit_log contains unsupported provisional mark dispositions: {invalid}"
+                )
+            if not set(revision.mark_dispositions).issubset(set(revision.reviewed_mark_ids)):
+                raise ContinuityError(
+                    "audit_log mark_dispositions must refer only to reviewed_mark_ids."
+                )
         tension_ids = [
             tension.tension_id for tension in snapshot.canonical.open_tensions
         ]

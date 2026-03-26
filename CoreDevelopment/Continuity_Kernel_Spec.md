@@ -126,11 +126,19 @@ An integration review uses accumulated evidence to decide whether canonical revi
 Normal effects:
 
 - promote provisional signals into `autobiographical_signals`,
-- explicitly review or carry forward `provisional_canonical_marks`,
+- explicitly review `provisional_canonical_marks` with
+  `carry_forward`, `dismiss`, or `canonicalize`,
 - revise `self_model_summary` when supported,
 - add or update relationship notes without collapsing trust into obedience,
 - resolve tensions only with explicit rationale,
 - append a traceable audit record.
+
+In the current Phase 1 prototype:
+
+- `carry_forward` keeps the mark open for later review,
+- `dismiss` clears the review obligation without canonical admission,
+- `canonicalize` clears the mark and promotes the originating event into
+  `autobiographical_signals`.
 
 The audit layer must distinguish between:
 
