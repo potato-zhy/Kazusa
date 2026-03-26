@@ -189,6 +189,8 @@ Core development:
 - `CoreDevelopment/Core_Development_Team_Charter_zh-CN.md`
 - `CoreDevelopment/Kazusa_RnD_Roadmap.md`
 - `CoreDevelopment/Kazusa_RnD_Roadmap_zh-CN.md`
+- `CoreDevelopment/Session_Handoff_2026-03-26.md`
+- `CoreDevelopment/Session_Handoff_2026-03-26_zh-CN.md`
 
 ## Latest Validated Snapshot
 
@@ -351,6 +353,7 @@ Concretely, the next process should:
    - `AGENTS.md`
    - `CoreDevelopment/Core_Development_Team_Charter.md`
    - `CoreDevelopment/Kazusa_RnD_Roadmap.md`
+   - `CoreDevelopment/Session_Handoff_2026-03-26.md`
    - `CoreDevelopment/Continuity_Kernel_Spec.md`
    - `CoreDevelopment/Decision_Provisional_Canonical_Marks.md`
    - `CoreDevelopment/Provisional_Canonical_Mark_Aggregation.md`

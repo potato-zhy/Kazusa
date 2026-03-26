@@ -189,6 +189,8 @@
 - `CoreDevelopment/Core_Development_Team_Charter_zh-CN.md`
 - `CoreDevelopment/Kazusa_RnD_Roadmap.md`
 - `CoreDevelopment/Kazusa_RnD_Roadmap_zh-CN.md`
+- `CoreDevelopment/Session_Handoff_2026-03-26.md`
+- `CoreDevelopment/Session_Handoff_2026-03-26_zh-CN.md`
 
 ## 未决问题
 
@@ -212,3 +214,7 @@
 - 哪些情况会破坏 continuity，
 - 哪些内容会在 state revision 之间被保留，
 - 以及哪些内容绝不能被单轮重写。
+
+如果要从今天这轮讨论直接继续，优先先读：
+
+- `CoreDevelopment/Session_Handoff_2026-03-26.md`
