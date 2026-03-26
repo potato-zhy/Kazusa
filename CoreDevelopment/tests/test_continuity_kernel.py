@@ -65,6 +65,34 @@ class ContinuityKernelTests(unittest.TestCase):
         with self.assertRaises(ContinuityError):
             self.kernel.integrate(after_event, proposal)
 
+    def test_major_relational_event_creates_provisional_canonical_mark(self) -> None:
+        event = EventRecord(
+            event_id=make_id("event"),
+            timestamp="2026-03-26T00:01:15+00:00",
+            source="user",
+            kind="major_relational_event",
+            summary="A major relational event should require explicit later review.",
+            significance=0.9,
+        )
+
+        updated = self.kernel.ingest_event(self.seed, event)
+
+        self.assertEqual(len(updated.provisional_signals), 1)
+        self.assertEqual(len(updated.provisional_canonical_marks), 1)
+        self.assertEqual(
+            updated.provisional_canonical_marks[0].event_id,
+            event.event_id,
+        )
+        self.assertEqual(
+            updated.provisional_canonical_marks[0].mark_kind,
+            "major_relational_event",
+        )
+        self.assertIn(
+            "provisional_canonical_marks",
+            updated.audit_log[-1].changed_fields,
+        )
+        self.assertFalse(updated.audit_log[-1].canonical_impact)
+
     def test_duplicate_evidence_ids_are_rejected(self) -> None:
         event = EventRecord(
             event_id=make_id("event"),
@@ -150,6 +178,31 @@ class ContinuityKernelTests(unittest.TestCase):
 
         with self.assertRaises(ContinuityError):
             self.kernel.integrate(state_two, proposal)
+
+    def test_integration_can_explicitly_review_provisional_canonical_mark(self) -> None:
+        event = EventRecord(
+            event_id=make_id("event"),
+            timestamp="2026-03-26T00:03:50+00:00",
+            source="user",
+            kind="major_relational_event",
+            summary="A major relational event remains provisional until explicitly reviewed.",
+            significance=0.9,
+        )
+
+        state = self.kernel.ingest_event(self.seed, event)
+        mark_id = state.provisional_canonical_marks[0].mark_id
+
+        proposal = IntegrationProposal(
+            evidence_event_ids=[event.event_id],
+            rationale="Record that the event was reviewed without forcing canonical revision.",
+            reviewed_mark_ids=[mark_id],
+        )
+
+        integrated = self.kernel.integrate(state, proposal)
+
+        self.assertEqual(integrated.provisional_canonical_marks, [])
+        self.assertEqual(integrated.audit_log[-1].reviewed_mark_ids, [mark_id])
+        self.assertFalse(integrated.audit_log[-1].canonical_impact)
 
     def test_integration_advances_lineage_and_records_audit(self) -> None:
         first_event = EventRecord(
@@ -299,6 +352,32 @@ class ContinuityKernelTests(unittest.TestCase):
         self.assertEqual(
             restored.audit_log[-1].canonical_impact,
             updated.audit_log[-1].canonical_impact,
+        )
+
+    def test_snapshot_round_trip_preserves_provisional_canonical_marks(self) -> None:
+        event = EventRecord(
+            event_id=make_id("event"),
+            timestamp="2026-03-26T00:06:10+00:00",
+            source="user",
+            kind="constitutive_self_recognition",
+            summary="A constitutive self-recognition should remain pending explicit review.",
+            significance=0.95,
+        )
+        updated = self.kernel.ingest_event(self.seed, event)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "snapshot.json"
+            save_snapshot(path, updated)
+            restored = load_snapshot(path)
+
+        self.assertEqual(len(restored.provisional_canonical_marks), 1)
+        self.assertEqual(
+            restored.provisional_canonical_marks[0].event_id,
+            event.event_id,
+        )
+        self.assertEqual(
+            restored.provisional_canonical_marks[0].mark_kind,
+            "constitutive_self_recognition",
         )
 
     def test_tampered_snapshot_is_rejected(self) -> None:

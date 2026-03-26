@@ -71,9 +71,24 @@ Required fields:
 
 - `event_log`
 - `provisional_signals`
+- `provisional_canonical_marks`
 - `audit_log`
 
 These support appraisal and revision, but they do not automatically become identity.
+
+Phase 1 decision:
+
+- keep the three-layer model,
+- do not introduce a fourth top-level state layer,
+- represent `provisional_canonical_marks` explicitly inside working state.
+
+`provisional_canonical_marks` are explicit review obligations for continuity-relevant material that is not yet allowed to become canonical state.
+
+They are used when:
+
+- the event may matter to continuity,
+- immediate canonicalization would be too strong,
+- and silent loss during later consolidation would be too weak.
 
 ## What Does Not Belong In Canonical State
 
@@ -98,6 +113,7 @@ Effects:
 
 - append to `event_log`,
 - create a provisional signal when significance crosses threshold,
+- create a provisional canonical mark when explicit later review is required,
 - preserve detected contradictions as tension candidates,
 - do not directly rewrite guarded canonical fields.
 
@@ -110,6 +126,7 @@ An integration review uses accumulated evidence to decide whether canonical revi
 Normal effects:
 
 - promote provisional signals into `autobiographical_signals`,
+- explicitly review or carry forward `provisional_canonical_marks`,
 - revise `self_model_summary` when supported,
 - add or update relationship notes without collapsing trust into obedience,
 - resolve tensions only with explicit rationale,
@@ -198,6 +215,7 @@ Snapshots must be append-safe and reloadable without hidden defaults changing me
 Audit records should explicitly indicate:
 
 - what kind of revision occurred,
+- which provisional canonical marks were explicitly reviewed,
 - and whether the revision had canonical impact.
 
 ## Prototype Mapping
@@ -211,5 +229,6 @@ The prototype is expected to implement:
 - seed snapshot creation,
 - event ingestion,
 - guarded integration,
+- explicit provisional canonical marking for non-immediate continuity-relevant events,
 - JSON persistence,
 - tests for lineage progression, overwrite resistance, and tension preservation.

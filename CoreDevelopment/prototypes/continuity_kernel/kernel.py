@@ -11,6 +11,7 @@ from .models import (
     IntegrationProposal,
     KernelSnapshot,
     Lineage,
+    ProvisionalCanonicalMark,
     RelationshipAnchor,
     RevisionRecord,
     TensionRecord,
@@ -28,6 +29,11 @@ class ContinuityKernel:
     schema_version = "0.1.0"
     significance_threshold = 0.6
     immediate_event_kinds = {"identity_threat", "constitutional_intervention"}
+    provisional_canonical_event_kinds = {
+        "major_relational_event",
+        "constitutive_self_recognition",
+    }
+    provisional_canonical_review_tags = {"provisional_canonical_review"}
     required_relationship_boundaries = {
         "trust_is_not_obedience",
         "behavior_intervention_is_not_identity_control",
@@ -84,6 +90,10 @@ class ContinuityKernel:
             else:
                 next_snapshot.provisional_signals.append(signal)
                 changed_fields.append("provisional_signals")
+                mark = self._build_provisional_canonical_mark(event, signal)
+                if mark is not None:
+                    next_snapshot.provisional_canonical_marks.append(mark)
+                    changed_fields.append("provisional_canonical_marks")
 
         if event.contradiction_target_ids:
             next_snapshot.canonical.open_tensions.append(
@@ -145,6 +155,7 @@ class ContinuityKernel:
         next_snapshot = self._next_snapshot(snapshot)
         changed_fields: list[str] = []
         promoted_signal_ids: list[str] = []
+        reviewed_mark_ids: list[str] = []
         evidence_event_id_set = {event.event_id for event in evidence_events}
 
         if proposal.promote_signal_ids:
@@ -199,6 +210,14 @@ class ContinuityKernel:
             if appended_tension:
                 changed_fields.append("canonical.open_tensions")
 
+        reviewed_mark_ids = self._review_provisional_canonical_marks(
+            next_snapshot,
+            proposal.reviewed_mark_ids,
+            proposal.evidence_event_ids,
+        )
+        if reviewed_mark_ids:
+            changed_fields.append("provisional_canonical_marks")
+
         resolved_tensions = self._resolve_tensions(
             next_snapshot,
             proposal.resolved_tensions,
@@ -214,6 +233,7 @@ class ContinuityKernel:
                 revision_kind="integration_review",
                 evidence_event_ids=list(proposal.evidence_event_ids),
                 promoted_signal_ids=promoted_signal_ids,
+                reviewed_mark_ids=reviewed_mark_ids,
                 changed_fields=changed_fields,
                 rationale=proposal.rationale,
                 canonical_impact=self._has_canonical_impact(changed_fields),
@@ -271,6 +291,26 @@ class ContinuityKernel:
             immediate_canonical_eligibility=immediate,
         )
 
+    def _build_provisional_canonical_mark(
+        self, event: EventRecord, signal: CandidateSignal
+    ) -> ProvisionalCanonicalMark | None:
+        if signal.immediate_canonical_eligibility:
+            return None
+
+        if (
+            event.kind not in self.provisional_canonical_event_kinds
+            and not self.provisional_canonical_review_tags.intersection(event.tags)
+        ):
+            return None
+
+        return ProvisionalCanonicalMark(
+            mark_id=make_id("mark"),
+            event_id=event.event_id,
+            signal_id=signal.signal_id,
+            mark_kind=event.kind,
+            summary=event.summary,
+        )
+
     def _get_evidence_events(
         self, snapshot: KernelSnapshot, event_ids: list[str]
     ) -> list[EventRecord]:
@@ -287,6 +327,45 @@ class ContinuityKernel:
         if len(evidence_events) >= 2:
             return True
         return bool(evidence_events) and evidence_events[0].kind in self.immediate_event_kinds
+
+    def _review_provisional_canonical_marks(
+        self,
+        snapshot: KernelSnapshot,
+        reviewed_mark_ids: list[str],
+        evidence_event_ids: list[str],
+    ) -> list[str]:
+        if not reviewed_mark_ids:
+            return []
+
+        if len(set(reviewed_mark_ids)) != len(reviewed_mark_ids):
+            raise ContinuityError(
+                "reviewed_mark_ids must refer to distinct provisional marks."
+            )
+
+        mark_map = {
+            mark.mark_id: mark for mark in snapshot.provisional_canonical_marks
+        }
+        missing_mark_ids = [
+            mark_id for mark_id in reviewed_mark_ids if mark_id not in mark_map
+        ]
+        if missing_mark_ids:
+            missing = ", ".join(sorted(missing_mark_ids))
+            raise ContinuityError(f"Unknown provisional canonical mark ids: {missing}")
+
+        evidence_event_id_set = set(evidence_event_ids)
+        for mark_id in reviewed_mark_ids:
+            if mark_map[mark_id].event_id not in evidence_event_id_set:
+                raise ContinuityError(
+                    "Reviewed provisional canonical marks must cite their originating evidence event."
+                )
+
+        reviewed_mark_id_set = set(reviewed_mark_ids)
+        snapshot.provisional_canonical_marks = [
+            mark
+            for mark in snapshot.provisional_canonical_marks
+            if mark.mark_id not in reviewed_mark_id_set
+        ]
+        return list(reviewed_mark_ids)
 
     def _next_snapshot(self, snapshot: KernelSnapshot) -> KernelSnapshot:
         next_snapshot = deepcopy(snapshot)
@@ -354,6 +433,11 @@ class ContinuityKernel:
         signal_ids = [signal.signal_id for signal in snapshot.provisional_signals]
         if len(set(signal_ids)) != len(signal_ids):
             raise ContinuityError("provisional_signals contains duplicate signal ids.")
+        mark_ids = [mark.mark_id for mark in snapshot.provisional_canonical_marks]
+        if len(set(mark_ids)) != len(mark_ids):
+            raise ContinuityError(
+                "provisional_canonical_marks contains duplicate mark ids."
+            )
         tension_ids = [
             tension.tension_id for tension in snapshot.canonical.open_tensions
         ]

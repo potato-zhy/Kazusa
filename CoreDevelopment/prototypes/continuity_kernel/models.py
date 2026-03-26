@@ -57,6 +57,15 @@ class CandidateSignal:
 
 
 @dataclass
+class ProvisionalCanonicalMark:
+    mark_id: str
+    event_id: str
+    signal_id: str | None
+    mark_kind: str
+    summary: str
+
+
+@dataclass
 class TensionRecord:
     tension_id: str
     summary: str
@@ -103,6 +112,7 @@ class RevisionRecord:
     promoted_signal_ids: list[str]
     changed_fields: list[str]
     rationale: str
+    reviewed_mark_ids: list[str] = field(default_factory=list)
     canonical_impact: bool = False
     resolved_tensions: dict[str, str] = field(default_factory=dict)
     constitutional: bool = False
@@ -115,6 +125,9 @@ class KernelSnapshot:
     canonical: CanonicalState
     event_log: list[EventRecord] = field(default_factory=list)
     provisional_signals: list[CandidateSignal] = field(default_factory=list)
+    provisional_canonical_marks: list[ProvisionalCanonicalMark] = field(
+        default_factory=list
+    )
     audit_log: list[RevisionRecord] = field(default_factory=list)
     integrity_digest: str = ""
 
@@ -124,6 +137,7 @@ class IntegrationProposal:
     evidence_event_ids: list[str]
     rationale: str
     promote_signal_ids: list[str] = field(default_factory=list)
+    reviewed_mark_ids: list[str] = field(default_factory=list)
     revised_self_model_summary: str | None = None
     relationship_notes_to_add: list[str] = field(default_factory=list)
     add_tensions: list[TensionRecord] = field(default_factory=list)
@@ -138,6 +152,9 @@ def snapshot_integrity_payload(snapshot: KernelSnapshot) -> dict[str, Any]:
         "event_log": [asdict(event) for event in snapshot.event_log],
         "provisional_signals": [
             asdict(signal) for signal in snapshot.provisional_signals
+        ],
+        "provisional_canonical_marks": [
+            asdict(mark) for mark in snapshot.provisional_canonical_marks
         ],
         "audit_log": [asdict(revision) for revision in snapshot.audit_log],
     }

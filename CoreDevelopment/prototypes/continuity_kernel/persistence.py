@@ -10,6 +10,7 @@ from .models import (
     EventRecord,
     KernelSnapshot,
     Lineage,
+    ProvisionalCanonicalMark,
     RelationshipAnchor,
     RevisionRecord,
     TensionRecord,
@@ -40,6 +41,10 @@ def snapshot_from_dict(payload: dict) -> KernelSnapshot:
         CandidateSignal(**signal_payload)
         for signal_payload in payload["provisional_signals"]
     ]
+    provisional_canonical_marks = [
+        ProvisionalCanonicalMark(**mark_payload)
+        for mark_payload in payload.get("provisional_canonical_marks", [])
+    ]
     audit_log = [
         RevisionRecord(
             revision_id=revision_payload["revision_id"],
@@ -47,6 +52,7 @@ def snapshot_from_dict(payload: dict) -> KernelSnapshot:
             revision_kind=revision_payload.get("revision_kind", "integration_review"),
             evidence_event_ids=revision_payload["evidence_event_ids"],
             promoted_signal_ids=revision_payload["promoted_signal_ids"],
+            reviewed_mark_ids=revision_payload.get("reviewed_mark_ids", []),
             changed_fields=revision_payload["changed_fields"],
             rationale=revision_payload["rationale"],
             canonical_impact=revision_payload.get("canonical_impact", False),
@@ -62,6 +68,7 @@ def snapshot_from_dict(payload: dict) -> KernelSnapshot:
         canonical=canonical,
         event_log=event_log,
         provisional_signals=provisional_signals,
+        provisional_canonical_marks=provisional_canonical_marks,
         audit_log=audit_log,
         integrity_digest=payload["integrity_digest"],
     )
