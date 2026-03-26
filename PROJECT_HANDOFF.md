@@ -162,6 +162,8 @@ Current high-level judgment:
 - most events should mature through delayed integration,
 - small signals may be retained as candidates before canonical adoption.
 - audit should distinguish ordinary snapshot progression from true canonical impact.
+- appraisal should remain multidimensional rather than collapsing into one importance score.
+- `provisional_canonical_marks` now exist as explicit persisted review obligations inside working state, not as a fourth top-level state layer.
 
 ## Immediate Canonical Impact
 
@@ -193,10 +195,10 @@ Core development:
 These are still unresolved and should be treated as active R&D questions:
 
 1. Final definition of `canonical state` fields.
-2. Whether `provisional canonical mark` should exist as an explicit state layer.
-3. Exact threshold for `major relational rupture or commitment`.
-4. Minimum seed structure.
-5. Formal significance policy.
+2. Exact threshold for `major relational rupture or commitment`.
+3. Minimum seed structure.
+4. Formal significance policy.
+5. Exact operational thresholds for `carry_forward`, `dismiss`, and `canonicalize`.
 6. Sleep / consolidation rules.
 7. Constitutional rules for self-revision.
 

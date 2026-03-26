@@ -162,6 +162,8 @@
 - 大多数事件应经过延迟整合，
 - 小信号可以先作为候选保留，再决定是否进入 canonical state。
 - audit 应区分普通的 snapshot progression 和真正的 canonical impact。
+- appraisal 应保持多维判断，而不应塌缩成单一的重要性分数。
+- `provisional_canonical_marks` 现已被界定为 working state 内的显式持久化复核义务，而不是第四个顶层状态层。
 
 ## Immediate Canonical Impact
 
@@ -193,10 +195,10 @@
 以下问题仍应视为活跃研发问题：
 
 1. `canonical state` 的最终字段定义。
-2. `provisional canonical mark` 是否应成为显式状态层。
-3. `major relational rupture or commitment` 的具体阈值。
-4. 最小 seed structure。
-5. 形式化的 significance policy。
+2. `major relational rupture or commitment` 的具体阈值。
+3. 最小 seed structure。
+4. 形式化的 significance policy。
+5. `carry_forward`、`dismiss`、`canonicalize` 的精确操作阈值。
 6. sleep / consolidation rules。
 7. self-revision 的宪法级规则。
 
